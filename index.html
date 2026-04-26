@@ -439,8 +439,7 @@
         };
 
         // Initialize Firebase
-        const app = initializeApp(firebaseConfig);
-        const analytics = getAnalytics(app);
+        firebase.initializeApp(firebaseConfig);
 
         // Initialise Firebase and the callable Cloud Function
         let getAIMoveCloud = null;
@@ -448,7 +447,6 @@
 
         try {
             if (firebaseConfig.apiKey && firebaseConfig.apiKey !== 'YOUR_API_KEY') {
-                firebase.initializeApp(firebaseConfig);
                 getAIMoveCloud = firebase.functions().httpsCallable('getAIMove');
                 useCloudAI = true;
             }
