@@ -143,7 +143,7 @@
 </head>
 <body>
 
-<a href="https://shreyasmuzumdar.github.io/connect-4/" class="back-btn">← Back</a>
+<a href="./" class="back-btn">← Back</a>
 <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
   <div class="toggle-track">
     <div class="toggle-thumb" id="themeIcon">☀️</div>
@@ -195,6 +195,8 @@
   let currentTurn = 1;
   let gameOver = false;
   let pollInterval = null;
+  let sending = false;
+  let opponentJoined = false;
 
   const statusEl = document.getElementById('status');
   const lobbyEl  = document.getElementById('lobby');
@@ -232,28 +234,52 @@
     }
   }
 
-  function updateChips() {
+  function updateUI() {
     chip1.classList.toggle('active', currentTurn === 1);
     chip2.classList.toggle('active', currentTurn === 2);
     if (!gameOver) {
-      canvas.className = currentTurn === myPlayer ? 'my-turn' : 'not-turn';
+      const isMyTurn = currentTurn === myPlayer && opponentJoined && !sending;
+      canvas.className = isMyTurn ? 'my-turn' : 'not-turn';
+      if (!opponentJoined) {
+        // keep the share code message, don't overwrite it
+      } else {
+        statusEl.textContent = isMyTurn ? '🟢 Your turn!' : "⏳ Opponent's turn...";
+      }
     }
   }
 
-  let sending = false;
-
   // ── Canvas click ─────────────────────────────────────────────────────────────
   canvas.addEventListener('click', async (e) => {
-    if (gameOver || currentTurn !== myPlayer || sending) return;
+    if (gameOver || currentTurn !== myPlayer || sending || !opponentJoined) return;
     const rect = canvas.getBoundingClientRect();
     const col = Math.floor((e.clientX - rect.left) / CELL);
     if (col < 0 || col >= COLS || board[0]?.[col] !== 0) return;
+
     sending = true;
     canvas.className = 'not-turn';
-    await sendMove(col);
+
+    try {
+      const res = await fetch(`${WORKER}/move`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: roomCode, player: myPlayer, col }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        board = data.board;
+        drawBoard();
+        if (data.status === 'done') {
+          handleGameOver(data.winner);
+          return; // don't clear sending, game is over
+        }
+        currentTurn = data.turn;
+      }
+    } catch {
+      statusEl.textContent = '❌ Move failed.';
+    }
+
     sending = false;
-    // If game ended on this move, make sure it's shown
-    if (gameOver) drawBoard();
+    updateUI();
   });
 
   // ── API ───────────────────────────────────────────────────────────────────────
@@ -269,9 +295,10 @@
       myPlayer = 1;
       board = emptyBoard();
       currentTurn = 1;
-      // Show game board immediately — display the code inside the game view
+      opponentJoined = false;
       showGame();
       statusEl.innerHTML = `⏳ Share code <strong style="letter-spacing:0.1em">${roomCode}</strong> — waiting for opponent...`;
+      canvas.className = 'not-turn';
       startPolling();
     } catch {
       statusEl.textContent = '❌ Could not reach server.';
@@ -295,33 +322,10 @@
       myPlayer = 2;
       board = data.board;
       currentTurn = data.turn;
+      opponentJoined = true;
       showGame();
     } catch {
       statusEl.textContent = '❌ Could not reach server.';
-    }
-  }
-
-  async function sendMove(col) {
-    try {
-      const res = await fetch(`${WORKER}/move`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: roomCode, player: myPlayer, col }),
-      });
-      const data = await res.json();
-      if (!res.ok) { updateChips(); return; }
-      board = data.board;
-      currentTurn = data.turn;
-      drawBoard();
-      if (data.status === 'done') {
-        handleGameOver(data.winner);
-      } else {
-        updateChips();
-        setStatusText();
-      }
-    } catch {
-      statusEl.textContent = '❌ Move failed.';
-      updateChips();
     }
   }
 
@@ -333,6 +337,11 @@
         body: JSON.stringify({ code: roomCode }),
       });
       gameOver = false;
+      sending = false;
+      board = emptyBoard();
+      currentTurn = 1;
+      drawBoard();
+      updateUI();
       startPolling();
     } catch {
       statusEl.textContent = '❌ Could not request rematch.';
@@ -349,6 +358,7 @@
       }).catch(() => {});
     }
     roomCode = null; myPlayer = null; gameOver = false;
+    sending = false; opponentJoined = false;
     board = emptyBoard();
     lobbyEl.style.display = 'flex';
     gameEl.style.display = 'none';
@@ -362,7 +372,6 @@
   // ── Polling ──────────────────────────────────────────────────────────────────
   function startPolling() {
     stopPolling();
-    poll();
     pollInterval = setInterval(poll, 1000);
   }
 
@@ -371,44 +380,42 @@
   }
 
   async function poll() {
-    if (!roomCode || !myPlayer) return;
+    if (!roomCode || !myPlayer || gameOver) return;
     try {
       const res = await fetch(`${WORKER}/poll?room=${roomCode}&player=${myPlayer}`);
       if (!res.ok) return;
       const data = await res.json();
 
-      // Player 1 in game view waiting — opponent just joined
-      if (data.opponentJoined && myPlayer === 1 && !gameOver && statusEl.textContent.includes('waiting')) {
+      // Detect opponent joining (Player 1 only)
+      if (!opponentJoined && data.opponentJoined) {
+        opponentJoined = true;
         currentTurn = data.turn;
-        updateChips();
-        setStatusText();
+        board = data.board;
+        drawBoard();
+        updateUI();
         return;
       }
 
-      // Player 1 still waiting for opponent
-      if (!data.opponentJoined && myPlayer === 1 && gameEl.style.display !== 'none') {
-        return;
-      }
+      if (!opponentJoined) return; // still waiting, don't touch anything
 
-      board = data.board;
-      drawBoard();
-
-      if (data.status === 'done' && !gameOver && !sending) {
+      // Game over (opponent won or draw — our own wins are handled in the click)
+      if (data.status === 'done' && !sending) {
+        board = data.board;
+        drawBoard();
         handleGameOver(data.winner);
         return;
       }
 
-      if (!gameOver && !sending) {
-        // Only update turn from poll when it's not our turn
-        // (our own moves update turn immediately via sendMove)
-        if (currentTurn !== myPlayer) {
-          currentTurn = data.turn;
-          updateChips();
-          setStatusText();
-        }
+      // Only update from poll when it's the opponent's turn
+      // Never overwrite state mid-send
+      if (!sending && currentTurn !== myPlayer) {
+        board = data.board;
+        currentTurn = data.turn;
+        drawBoard();
+        updateUI();
       }
 
-      if (data.opponentGone && !gameOver) {
+      if (data.opponentGone) {
         stopPolling();
         statusEl.textContent = '👋 Opponent disconnected.';
         gameOver = true;
@@ -423,18 +430,14 @@
     lobbyEl.style.display = 'none';
     gameEl.style.display = 'flex';
     gameOver = false;
+    sending = false;
     drawBoard();
-    updateChips();
-    setStatusText();
-    startPolling();
-  }
-
-  function setStatusText() {
-    statusEl.textContent = currentTurn === myPlayer ? '🟢 Your turn!' : "⏳ Opponent's turn...";
+    updateUI();
   }
 
   function handleGameOver(winner) {
     gameOver = true;
+    sending = false;
     stopPolling();
     canvas.className = 'not-turn';
     drawBoard();
