@@ -1,7 +1,14 @@
 {
-  "name": "connect-4",
-  "main": "cloudflare-worker/index.js",
-  "compatibility_date": "2026-04-25",
-  "workers_dev": true,
-  "account_id": "f2056d84cc95eda0bb73f79261962b87"
+	"name": "connect-4",
+	"main": "cloudflare-worker/index.js",
+	"compatibility_date": "2026-04-25",
+	"workers_dev": true,
+	"account_id": "f2056d84cc95eda0bb73f79261962b87",
+	"kv_namespaces": [
+		{
+			"binding": "CONNECT4_ROOMS",
+			"id": "666001cdd3f744d5911bfe4998c2b864",
+			"remote": true
+		}
+	]
 }
