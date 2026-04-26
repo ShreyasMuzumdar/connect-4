@@ -252,6 +252,8 @@
     canvas.className = 'not-turn';
     await sendMove(col);
     sending = false;
+    // If game ended on this move, make sure it's shown
+    if (gameOver) drawBoard();
   });
 
   // ── API ───────────────────────────────────────────────────────────────────────
@@ -391,7 +393,7 @@
       board = data.board;
       drawBoard();
 
-      if (data.status === 'done' && !gameOver) {
+      if (data.status === 'done' && !gameOver && !sending) {
         handleGameOver(data.winner);
         return;
       }
