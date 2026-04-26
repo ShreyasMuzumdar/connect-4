@@ -1,29 +1,17 @@
-// ─── Constants ───────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 const ROWS = 6;
 const COLS = 7;
 const PLAYER = 1;
 const AI = 2;
 const EMPTY = 0;
-const SEARCH_DEPTH = 4; // reduced from 6 to stay within free-tier CPU limit
+const SEARCH_DEPTH = 4;
+const ROOM_TTL = 60 * 60; // 1 hour expiry on KV entries
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Upgrade",
+  "Access-Control-Allow-Headers": "Content-Type",
 };
-
-// ─── In-memory room store ─────────────────────────────────────────────────────
-// Rooms live only as long as this Worker instance is alive.
-// Each room: { p1: WebSocket, p2: WebSocket|null, board: number[][], turn: 1|2 }
-const rooms = new Map();
-
-function makeRoomCode() {
-  return Math.random().toString(36).slice(2, 8).toUpperCase();
-}
-
-function emptyBoard() {
-  return Array.from({ length: ROWS }, () => Array(COLS).fill(EMPTY));
-}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function jsonResponse(body, status = 200) {
@@ -33,128 +21,39 @@ function jsonResponse(body, status = 200) {
   });
 }
 
-function send(ws, msg) {
-  try { ws.send(JSON.stringify(msg)); } catch (_) {}
+function emptyBoard() {
+  return Array.from({ length: ROWS }, () => Array(COLS).fill(EMPTY));
 }
 
-// ─── WebSocket multiplayer ────────────────────────────────────────────────────
-function handleWebSocket(request) {
-  const url = new URL(request.url);
-  const code = url.searchParams.get("room")?.toUpperCase();
-
-  if (!code) return jsonResponse({ error: "Missing ?room= param" }, 400);
-
-  const { 0: client, 1: server } = new WebSocketPair();
-  server.accept();
-
-  let room = rooms.get(code);
-  let playerNum;
-
-  if (!room) {
-    // First player — create the room
-    room = { p1: server, p2: null, board: emptyBoard(), turn: 1 };
-    rooms.set(code, room);
-    playerNum = 1;
-    send(server, { type: "waiting", message: "Waiting for opponent...", player: 1 });
-  } else if (!room.p2) {
-    // Second player — join and start
-    room.p2 = server;
-    playerNum = 2;
-    send(server, { type: "start", player: 2, turn: 1, board: room.board });
-    send(room.p1, { type: "start", player: 1, turn: 1, board: room.board });
-  } else {
-    // Room is full
-    send(server, { type: "error", message: "Room is full." });
-    server.close(1008, "Room full");
-    return new Response(null, { status: 101, webSocket: client });
-  }
-
-  // ── Message handler ──
-  server.addEventListener("message", (event) => {
-    let msg;
-    try { msg = JSON.parse(event.data); } catch { return; }
-
-    if (msg.type === "move") {
-      const col = msg.col;
-
-      // Validate it's this player's turn
-      if (room.turn !== playerNum) {
-        send(server, { type: "error", message: "Not your turn." });
-        return;
-      }
-
-      // Validate column
-      if (typeof col !== "number" || col < 0 || col >= COLS) {
-        send(server, { type: "error", message: "Invalid column." });
-        return;
-      }
-
-      // Find the row
-      let row = -1;
-      for (let r = ROWS - 1; r >= 0; r--) {
-        if (room.board[r][col] === EMPTY) { row = r; break; }
-      }
-      if (row === -1) {
-        send(server, { type: "error", message: "Column is full." });
-        return;
-      }
-
-      // Apply the move
-      room.board[row][col] = playerNum;
-
-      // Check for win or draw
-      const won = checkWin(room.board, playerNum);
-      const draw = !won && room.board[0].every((cell, c) => room.board[0][c] !== EMPTY);
-      const nextTurn = playerNum === 1 ? 2 : 1;
-      if (!won && !draw) room.turn = nextTurn;
-
-      const update = {
-        type: "update",
-        board: room.board,
-        lastMove: { row, col, player: playerNum },
-        turn: won || draw ? null : nextTurn,
-        winner: won ? playerNum : null,
-        draw: draw || false,
-      };
-
-      send(room.p1, update);
-      if (room.p2) send(room.p2, update);
-
-      // Clean up finished rooms
-      if (won || draw) rooms.delete(code);
-    }
-
-    if (msg.type === "rematch") {
-      room.board = emptyBoard();
-      room.turn = 1;
-      const reset = { type: "rematch", board: room.board, turn: 1 };
-      send(room.p1, reset);
-      if (room.p2) send(room.p2, reset);
-    }
-  });
-
-  // ── Close handler ──
-  server.addEventListener("close", () => {
-    const r = rooms.get(code);
-    if (!r) return;
-    const other = playerNum === 1 ? r.p2 : r.p1;
-    if (other) send(other, { type: "opponent_left" });
-    rooms.delete(code);
-  });
-
-  return new Response(null, { status: 101, webSocket: client });
+function makeRoomCode() {
+  return Math.random().toString(36).slice(2, 8).toUpperCase();
 }
 
-// ─── AI minimax (unchanged from your original) ────────────────────────────────
-function isValidLocation(board, col) { return board[0][col] === EMPTY; }
+// ─── KV room helpers ──────────────────────────────────────────────────────────
+// Room shape stored in KV:
+// {
+//   board: number[][],
+//   turn: 1 | 2,
+//   status: "waiting" | "playing" | "done",
+//   winner: null | 1 | 2 | "draw",
+//   p1LastSeen: number,  // timestamp ms
+//   p2LastSeen: number,
+// }
 
-function getNextOpenRow(board, col) {
-  for (let row = ROWS - 1; row >= 0; row--) {
-    if (board[row][col] === EMPTY) return row;
-  }
-  return -1;
+async function getRoom(env, code) {
+  const raw = await env.CONNECT4_ROOMS.get(code);
+  return raw ? JSON.parse(raw) : null;
 }
 
+async function saveRoom(env, code, room) {
+  await env.CONNECT4_ROOMS.put(code, JSON.stringify(room), { expirationTtl: ROOM_TTL });
+}
+
+async function deleteRoom(env, code) {
+  await env.CONNECT4_ROOMS.delete(code);
+}
+
+// ─── Win check ────────────────────────────────────────────────────────────────
 function checkWin(board, piece) {
   for (let r = 0; r < ROWS; r++)
     for (let c = 0; c < COLS - 3; c++)
@@ -169,6 +68,19 @@ function checkWin(board, piece) {
     for (let c = 3; c < COLS; c++)
       if (board[r][c] === piece && board[r-1][c-1] === piece && board[r-2][c-2] === piece && board[r-3][c-3] === piece) return true;
   return false;
+}
+
+function isBoardFull(board) {
+  return board[0].every(cell => cell !== EMPTY);
+}
+
+// ─── AI minimax ───────────────────────────────────────────────────────────────
+function isValidLocation(board, col) { return board[0][col] === EMPTY; }
+
+function getNextOpenRow(board, col) {
+  for (let row = ROWS - 1; row >= 0; row--)
+    if (board[row][col] === EMPTY) return row;
+  return -1;
 }
 
 function getValidLocations(board) {
@@ -235,36 +147,18 @@ function minimax(board, depth, alpha, beta, maximizing) {
 
 // ─── Router ───────────────────────────────────────────────────────────────────
 export default {
-  async fetch(request) {
+  async fetch(request, env) {
     const url = new URL(request.url);
     const method = request.method;
 
-    // CORS preflight
     if (method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
 
-    // ── WebSocket upgrade: GET /multiplayer?room=ABC123 ──
-    if (method === "GET" && url.pathname === "/multiplayer") {
-      const upgrade = request.headers.get("Upgrade");
-      if (upgrade !== "websocket") return jsonResponse({ error: "Expected WebSocket upgrade" }, 426);
-      return handleWebSocket(request);
-    }
-
-    // ── Create room: POST /create-room ──
-    if (method === "POST" && url.pathname === "/create-room") {
-      let code = makeRoomCode();
-      // Avoid collisions with existing rooms
-      while (rooms.has(code)) code = makeRoomCode();
-      // Don't create the room yet — the WebSocket connection does that.
-      // Just return a code the client can use to connect.
-      return jsonResponse({ code });
-    }
-
-    // ── Health check + AI: GET / ──
+    // ── GET / — health check ──
     if (method === "GET" && url.pathname === "/") {
       return jsonResponse({ ok: true, service: "connect-4-worker" });
     }
 
-    // ── AI move: POST / ──
+    // ── POST / — AI move ──
     if (method === "POST" && url.pathname === "/") {
       let payload;
       try { payload = await request.json(); } catch { return jsonResponse({ error: "Invalid JSON" }, 400); }
@@ -273,6 +167,131 @@ export default {
       for (const row of board) if (!Array.isArray(row) || row.length !== COLS) return jsonResponse({ error: "Invalid row" }, 400);
       const [column] = minimax(board.map(r => [...r]), SEARCH_DEPTH, -Infinity, Infinity, true);
       return jsonResponse({ column });
+    }
+
+    // ── POST /create-room ──
+    if (method === "POST" && url.pathname === "/create-room") {
+      let code = makeRoomCode();
+      while (await env.CONNECT4_ROOMS.get(code)) code = makeRoomCode();
+
+      const room = {
+        board: emptyBoard(),
+        turn: 1,
+        status: "waiting",
+        winner: null,
+        p1LastSeen: Date.now(),
+        p2LastSeen: 0,
+      };
+      await saveRoom(env, code, room);
+      return jsonResponse({ code });
+    }
+
+    // ── POST /join-room ──
+    if (method === "POST" && url.pathname === "/join-room") {
+      let payload;
+      try { payload = await request.json(); } catch { return jsonResponse({ error: "Invalid JSON" }, 400); }
+      const code = payload.code?.toUpperCase();
+      if (!code) return jsonResponse({ error: "Missing code" }, 400);
+
+      const room = await getRoom(env, code);
+      if (!room) return jsonResponse({ error: "Room not found" }, 404);
+      if (room.status !== "waiting") return jsonResponse({ error: "Room is full or already started" }, 409);
+
+      room.status = "playing";
+      room.p2LastSeen = Date.now();
+      await saveRoom(env, code, room);
+      return jsonResponse({ ok: true, board: room.board, turn: room.turn });
+    }
+
+    // ── GET /poll?room=CODE&player=1or2 ──
+    if (method === "GET" && url.pathname === "/poll") {
+      const code = url.searchParams.get("room")?.toUpperCase();
+      const player = parseInt(url.searchParams.get("player"));
+      if (!code || !player) return jsonResponse({ error: "Missing params" }, 400);
+
+      const room = await getRoom(env, code);
+      if (!room) return jsonResponse({ error: "Room not found" }, 404);
+
+      // Heartbeat
+      if (player === 1) room.p1LastSeen = Date.now();
+      else room.p2LastSeen = Date.now();
+
+      // Opponent disconnect detection (8s timeout)
+      const now = Date.now();
+      const opponentLastSeen = player === 1 ? room.p2LastSeen : room.p1LastSeen;
+      const opponentGone = opponentLastSeen > 0 && (now - opponentLastSeen) > 8000;
+
+      await saveRoom(env, code, room);
+
+      return jsonResponse({
+        board: room.board,
+        turn: room.turn,
+        status: room.status,
+        winner: room.winner,
+        opponentGone,
+        opponentJoined: room.status === "playing",
+      });
+    }
+
+    // ── POST /move ──
+    if (method === "POST" && url.pathname === "/move") {
+      let payload;
+      try { payload = await request.json(); } catch { return jsonResponse({ error: "Invalid JSON" }, 400); }
+      const { code, player, col } = payload;
+      if (!code || !player || col === undefined) return jsonResponse({ error: "Missing params" }, 400);
+
+      const room = await getRoom(env, code.toUpperCase());
+      if (!room) return jsonResponse({ error: "Room not found" }, 404);
+      if (room.status !== "playing") return jsonResponse({ error: "Game not in progress" }, 400);
+      if (room.turn !== player) return jsonResponse({ error: "Not your turn" }, 400);
+      if (col < 0 || col >= COLS || room.board[0][col] !== EMPTY) return jsonResponse({ error: "Invalid column" }, 400);
+
+      // Apply move
+      let row = -1;
+      for (let r = ROWS - 1; r >= 0; r--) {
+        if (room.board[r][col] === EMPTY) { row = r; break; }
+      }
+      room.board[row][col] = player;
+
+      if (checkWin(room.board, player)) {
+        room.status = "done";
+        room.winner = player;
+      } else if (isBoardFull(room.board)) {
+        room.status = "done";
+        room.winner = "draw";
+      } else {
+        room.turn = player === 1 ? 2 : 1;
+      }
+
+      await saveRoom(env, code.toUpperCase(), room);
+      return jsonResponse({ ok: true, board: room.board, turn: room.turn, status: room.status, winner: room.winner });
+    }
+
+    // ── POST /rematch ──
+    if (method === "POST" && url.pathname === "/rematch") {
+      let payload;
+      try { payload = await request.json(); } catch { return jsonResponse({ error: "Invalid JSON" }, 400); }
+      const code = payload.code?.toUpperCase();
+      if (!code) return jsonResponse({ error: "Missing code" }, 400);
+
+      const room = await getRoom(env, code);
+      if (!room) return jsonResponse({ error: "Room not found" }, 404);
+
+      room.board = emptyBoard();
+      room.turn = 1;
+      room.status = "playing";
+      room.winner = null;
+      await saveRoom(env, code, room);
+      return jsonResponse({ ok: true });
+    }
+
+    // ── POST /leave-room ──
+    if (method === "POST" && url.pathname === "/leave-room") {
+      let payload;
+      try { payload = await request.json(); } catch { return jsonResponse({ error: "Invalid JSON" }, 400); }
+      const code = payload.code?.toUpperCase();
+      if (code) await deleteRoom(env, code);
+      return jsonResponse({ ok: true });
     }
 
     return jsonResponse({ error: "Not found" }, 404);

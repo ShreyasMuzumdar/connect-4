@@ -3,5 +3,8 @@ main = "cloudflare-worker/index.js"
 compatibility_date = "2026-04-25"
 workers_dev = true
 
-# Replace this before deploying:
 account_id = "f2056d84cc95eda0bb73f79261962b87"
+
+[[kv_namespaces]]
+binding = "CONNECT4_ROOMS"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"

@@ -33,7 +33,6 @@
     h1 { text-align:center; font-size: 2.2rem; margin-bottom: 6px; }
     .subtitle { text-align:center; color:var(--text2); font-size:0.9rem; margin-bottom:20px; }
 
-    /* Status bar */
     .status {
       text-align:center; font-size:1.2rem; font-weight:600;
       padding:14px; border-radius:10px; margin-bottom:18px;
@@ -42,7 +41,6 @@
       display:flex; align-items:center; justify-content:center;
     }
 
-    /* Lobby */
     #lobby { display:flex; flex-direction:column; gap:14px; align-items:center; }
     .lobby-btn {
       padding:14px 40px; font-size:1rem; font-weight:600;
@@ -52,8 +50,7 @@
     }
     .lobby-btn.primary { background:#003366; color:#fff; }
     .lobby-btn.primary:hover { filter:brightness(1.2); transform:translateY(-2px); }
-    .lobby-btn.secondary { background:var(--bg2); color:var(--text); border:2px solid var(--border); }
-    .lobby-btn.secondary:hover { border-color:var(--accent); transform:translateY(-2px); }
+    .lobby-btn:disabled { opacity:0.6; cursor:not-allowed; transform:none !important; filter:none !important; }
 
     .join-row { display:flex; gap:8px; width:100%; max-width:340px; }
     .join-row input {
@@ -71,30 +68,26 @@
     }
     .join-row button:hover { filter:brightness(1.2); }
 
-    /* Room code display */
     .room-code-box {
       background:var(--bg2); border:2px dashed var(--border);
       border-radius:12px; padding:16px 24px; text-align:center;
+      width:100%; max-width:340px;
     }
     .room-code-box .label { font-size:0.8rem; color:var(--text2); margin-bottom:4px; }
-    .room-code-box .code {
-      font-size:2rem; font-weight:700; letter-spacing:0.25em;
-      color:var(--accent);
-    }
+    .room-code-box .code { font-size:2rem; font-weight:700; letter-spacing:0.25em; color:var(--accent); }
     [data-theme="dark"] .room-code-box .code { color:#93C5FD; }
     .room-code-box .hint { font-size:0.8rem; color:var(--text2); margin-top:4px; }
 
-    /* Board */
-    #game { display:none; flex-direction:column; align-items:center; gap:0; }
+    #game { display:none; flex-direction:column; align-items:center; }
     .board-wrap {
       background:#003366; border-radius:14px;
       padding:12px; margin-bottom:16px;
       box-shadow: 0 10px 30px var(--shadow);
     }
-    canvas { display:block; cursor:pointer; border-radius:8px; }
-    canvas.disabled { cursor:not-allowed; opacity:0.85; }
+    canvas { display:block; border-radius:8px; }
+    canvas.my-turn { cursor:pointer; }
+    canvas.not-turn { cursor:not-allowed; opacity:0.9; }
 
-    /* Controls */
     .controls { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; }
     .ctrl-btn {
       padding:11px 28px; font-size:0.95rem; font-weight:600;
@@ -106,11 +99,7 @@
     .ctrl-btn.danger { background:#ef4444; color:#fff; }
     .ctrl-btn.danger:hover { filter:brightness(1.1); transform:translateY(-2px); }
 
-    /* Player indicator */
-    .player-indicator {
-      display:flex; gap:16px; justify-content:center;
-      margin-bottom:14px;
-    }
+    .player-indicator { display:flex; gap:16px; justify-content:center; margin-bottom:14px; }
     .player-chip {
       display:flex; align-items:center; gap:6px;
       padding:6px 14px; border-radius:20px;
@@ -118,11 +107,10 @@
       transition:all 0.2s;
     }
     .player-chip.active { border-color:var(--accent); background:var(--bg2); }
-    .player-chip .dot { width:14px; height:14px; border-radius:50%; }
+    .dot { width:14px; height:14px; border-radius:50%; }
     .dot-red { background:#ef4444; }
     .dot-yellow { background:#f5c518; }
 
-    /* Back button */
     .back-btn {
       position:fixed; top:20px; left:20px;
       background:var(--accent); color:#fff;
@@ -133,7 +121,6 @@
     }
     .back-btn:hover { filter:brightness(1.15); transform:translateY(-2px); }
 
-    /* Theme toggle */
     .theme-toggle {
       position:fixed; top:20px; right:20px;
       background:none; border:none; cursor:pointer; padding:4px;
@@ -156,7 +143,7 @@
 </head>
 <body>
 
-<a href="../" class="back-btn">← Back</a>
+<a href="./" class="back-btn">← Back</a>
 <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
   <div class="toggle-track">
     <div class="toggle-thumb" id="themeIcon">☀️</div>
@@ -169,58 +156,46 @@
 
   <div class="status" id="status">Ready to play!</div>
 
-  <!-- Lobby -->
   <div id="lobby">
-    <button class="lobby-btn primary" onclick="createRoom()">🎮 Create Room</button>
+    <button class="lobby-btn primary" id="createBtn" onclick="createRoom()">🎮 Create Room</button>
     <div style="color:var(--text2);font-size:0.85rem;">— or —</div>
     <div class="join-row">
       <input id="codeInput" placeholder="ENTER CODE" maxlength="6" oninput="this.value=this.value.toUpperCase()">
       <button onclick="joinRoom()">Join</button>
     </div>
-    <div id="roomCodeBox" class="room-code-box" style="display:none;width:100%;max-width:340px;">
-      <div class="label">Your room code</div>
+    <div id="roomCodeBox" class="room-code-box" style="display:none;">
+      <div class="label">Your room code — share with your friend</div>
       <div class="code" id="roomCodeDisplay">------</div>
-      <div class="hint">Share this with your friend</div>
+      <div class="hint">Waiting for them to join...</div>
     </div>
   </div>
 
-  <!-- Game -->
   <div id="game">
     <div class="player-indicator">
-      <div class="player-chip" id="chip1">
-        <div class="dot dot-red"></div> Player 1 (Red)
-      </div>
-      <div class="player-chip" id="chip2">
-        <div class="dot dot-yellow"></div> Player 2 (Yellow)
-      </div>
+      <div class="player-chip" id="chip1"><div class="dot dot-red"></div> Player 1 (Red)</div>
+      <div class="player-chip" id="chip2"><div class="dot dot-yellow"></div> Player 2 (Yellow)</div>
     </div>
     <div class="board-wrap">
       <canvas id="gameCanvas" width="490" height="420"></canvas>
     </div>
     <div class="controls">
-      <button class="ctrl-btn primary" onclick="requestRematch()">🔄 Rematch</button>
+      <button class="ctrl-btn primary" onclick="rematch()">🔄 Rematch</button>
       <button class="ctrl-btn danger" onclick="leaveGame()">✕ Leave</button>
     </div>
   </div>
 </div>
 
 <script>
-  // ── Config ──────────────────────────────────────────────────────────────────
   const WORKER = 'https://connect-4.shreyas2966.workers.dev';
   const ROWS = 6, COLS = 7, CELL = 70, RADIUS = 30;
-  const P1_COLOR = '#ef4444';   // red
-  const P2_COLOR = '#f5c518';   // yellow
-  const EMPTY_COLOR = '#e5e7eb';
 
-  // ── State ───────────────────────────────────────────────────────────────────
-  let ws = null;
-  let myPlayer = null;   // 1 or 2
+  let myPlayer = null;
+  let roomCode = null;
   let board = [];
   let currentTurn = 1;
   let gameOver = false;
-  let myCode = null;
+  let pollInterval = null;
 
-  // ── DOM refs ─────────────────────────────────────────────────────────────────
   const statusEl = document.getElementById('status');
   const lobbyEl  = document.getElementById('lobby');
   const gameEl   = document.getElementById('game');
@@ -229,174 +204,233 @@
   const chip1    = document.getElementById('chip1');
   const chip2    = document.getElementById('chip2');
 
-  // ── Board drawing ────────────────────────────────────────────────────────────
+  // ── Drawing ──────────────────────────────────────────────────────────────────
   function emptyBoard() {
     return Array.from({ length: ROWS }, () => Array(COLS).fill(0));
   }
 
   function drawBoard() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    ctx.fillStyle = '#003366';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     for (let r = 0; r < ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
         const x = c * CELL + CELL / 2;
         const y = r * CELL + CELL / 2;
+        const v = board[r]?.[c] ?? 0;
         ctx.beginPath();
         ctx.arc(x, y, RADIUS, 0, Math.PI * 2);
-        const v = board[r]?.[c] ?? 0;
-        ctx.fillStyle = v === 1 ? P1_COLOR : v === 2 ? P2_COLOR : EMPTY_COLOR;
+        ctx.fillStyle = isDark ? '#000' : '#fff';
         ctx.fill();
-        ctx.strokeStyle = 'rgba(0,0,0,0.08)';
-        ctx.lineWidth = 1;
-        ctx.stroke();
+        if (v !== 0) {
+          ctx.beginPath();
+          ctx.arc(x, y, RADIUS - 3, 0, Math.PI * 2);
+          ctx.fillStyle = v === 1 ? '#ef4444' : '#f5c518';
+          ctx.fill();
+        }
       }
     }
   }
 
-  function updateTurnIndicator() {
+  function updateChips() {
     chip1.classList.toggle('active', currentTurn === 1);
     chip2.classList.toggle('active', currentTurn === 2);
+    if (!gameOver) {
+      canvas.className = currentTurn === myPlayer ? 'my-turn' : 'not-turn';
+    }
   }
 
   // ── Canvas click ─────────────────────────────────────────────────────────────
-  canvas.addEventListener('click', (e) => {
-    if (gameOver || currentTurn !== myPlayer || !ws) return;
+  canvas.addEventListener('click', async (e) => {
+    if (gameOver || currentTurn !== myPlayer) return;
     const rect = canvas.getBoundingClientRect();
     const col = Math.floor((e.clientX - rect.left) / CELL);
-    if (col >= 0 && col < COLS) {
-      ws.send(JSON.stringify({ type: 'move', col }));
-    }
+    if (col < 0 || col >= COLS || board[0]?.[col] !== 0) return;
+    canvas.className = 'not-turn';
+    await sendMove(col);
   });
 
-  // ── WebSocket ────────────────────────────────────────────────────────────────
-  function connect(code) {
-    const url = WORKER.replace('https://', 'wss://') + `/multiplayer?room=${code}`;
-    ws = new WebSocket(url);
-
-    ws.onopen = () => { statusEl.textContent = '🔌 Connecting...'; };
-
-    ws.onmessage = (e) => {
-      const msg = JSON.parse(e.data);
-
-      if (msg.type === 'waiting') {
-        myPlayer = 1;
-        statusEl.textContent = '⏳ Waiting for opponent to join...';
-      }
-
-      if (msg.type === 'start') {
-        myPlayer = myPlayer || msg.player;
-        board = msg.board;
-        currentTurn = msg.turn;
-        gameOver = false;
-        showGame();
-        setStatus();
-      }
-
-      if (msg.type === 'update') {
-        board = msg.board;
-        drawBoard();
-        if (msg.winner) {
-          gameOver = true;
-          const isMe = msg.winner === myPlayer;
-          statusEl.textContent = isMe ? '🎉 You win!' : '😞 You lost!';
-          canvas.classList.add('disabled');
-        } else if (msg.draw) {
-          gameOver = true;
-          statusEl.textContent = "🤝 It's a draw!";
-          canvas.classList.add('disabled');
-        } else {
-          currentTurn = msg.turn;
-          setStatus();
-        }
-        updateTurnIndicator();
-      }
-
-      if (msg.type === 'rematch') {
-        board = msg.board;
-        currentTurn = msg.turn;
-        gameOver = false;
-        canvas.classList.remove('disabled');
-        drawBoard();
-        setStatus();
-        updateTurnIndicator();
-      }
-
-      if (msg.type === 'opponent_left') {
-        statusEl.textContent = '👋 Opponent disconnected.';
-        gameOver = true;
-      }
-
-      if (msg.type === 'error') {
-        console.warn('Worker error:', msg.message);
-      }
-    };
-
-    ws.onclose = () => {
-      if (!gameOver) statusEl.textContent = '🔌 Disconnected. Refresh to reconnect.';
-    };
-
-    ws.onerror = () => {
-      statusEl.textContent = '❌ Connection failed.';
-    };
-  }
-
-  function setStatus() {
-    if (currentTurn === myPlayer) {
-      statusEl.textContent = '🟢 Your turn!';
-      canvas.classList.remove('disabled');
-    } else {
-      statusEl.textContent = '⏳ Opponent\'s turn...';
-      canvas.classList.add('disabled');
-    }
-  }
-
-  // ── Lobby actions ─────────────────────────────────────────────────────────────
+  // ── API ───────────────────────────────────────────────────────────────────────
   async function createRoom() {
+    const btn = document.getElementById('createBtn');
+    btn.disabled = true;
     statusEl.textContent = '🔄 Creating room...';
     try {
       const res = await fetch(`${WORKER}/create-room`, { method: 'POST' });
-      const { code } = await res.json();
-      myCode = code;
-      document.getElementById('roomCodeDisplay').textContent = code;
+      const data = await res.json();
+      if (!data.code) throw new Error();
+      roomCode = data.code;
+      myPlayer = 1;
+      board = emptyBoard();
+      document.getElementById('roomCodeDisplay').textContent = roomCode;
       document.getElementById('roomCodeBox').style.display = 'block';
-      statusEl.textContent = '⏳ Waiting for opponent...';
-      connect(code);
+      statusEl.textContent = '⏳ Waiting for opponent to join...';
+      startPolling();
+    } catch {
+      statusEl.textContent = '❌ Could not reach server.';
+      btn.disabled = false;
+    }
+  }
+
+  async function joinRoom() {
+    const code = document.getElementById('codeInput').value.trim().toUpperCase();
+    if (code.length < 4) { statusEl.textContent = '⚠️ Enter a valid room code.'; return; }
+    statusEl.textContent = '🔄 Joining...';
+    try {
+      const res = await fetch(`${WORKER}/join-room`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      const data = await res.json();
+      if (!res.ok) { statusEl.textContent = `❌ ${data.error}`; return; }
+      roomCode = code;
+      myPlayer = 2;
+      board = data.board;
+      currentTurn = data.turn;
+      showGame();
     } catch {
       statusEl.textContent = '❌ Could not reach server.';
     }
   }
 
-  function joinRoom() {
-    const code = document.getElementById('codeInput').value.trim().toUpperCase();
-    if (code.length < 4) { statusEl.textContent = '⚠️ Enter a valid room code.'; return; }
-    myPlayer = 2;
-    statusEl.textContent = '🔄 Joining...';
-    connect(code);
+  async function sendMove(col) {
+    try {
+      const res = await fetch(`${WORKER}/move`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: roomCode, player: myPlayer, col }),
+      });
+      const data = await res.json();
+      if (!res.ok) { updateChips(); return; }
+      board = data.board;
+      currentTurn = data.turn;
+      drawBoard();
+      if (data.status === 'done') {
+        handleGameOver(data.winner);
+      } else {
+        updateChips();
+        setStatusText();
+      }
+    } catch {
+      statusEl.textContent = '❌ Move failed.';
+      updateChips();
+    }
   }
 
-  function showGame() {
-    lobbyEl.style.display = 'none';
-    gameEl.style.display = 'flex';
-    board = board.length ? board : emptyBoard();
-    drawBoard();
-    updateTurnIndicator();
-  }
-
-  function requestRematch() {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'rematch' }));
+  async function rematch() {
+    try {
+      await fetch(`${WORKER}/rematch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: roomCode }),
+      });
+      gameOver = false;
+      startPolling();
+    } catch {
+      statusEl.textContent = '❌ Could not request rematch.';
     }
   }
 
   function leaveGame() {
-    if (ws) ws.close();
-    ws = null;
-    gameOver = false;
+    stopPolling();
+    if (roomCode) {
+      fetch(`${WORKER}/leave-room`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: roomCode }),
+      }).catch(() => {});
+    }
+    roomCode = null; myPlayer = null; gameOver = false;
+    board = emptyBoard();
     lobbyEl.style.display = 'flex';
     gameEl.style.display = 'none';
     document.getElementById('roomCodeBox').style.display = 'none';
     document.getElementById('codeInput').value = '';
+    document.getElementById('createBtn').disabled = false;
     statusEl.textContent = 'Ready to play!';
-    board = emptyBoard();
+    drawBoard();
+  }
+
+  // ── Polling ──────────────────────────────────────────────────────────────────
+  function startPolling() {
+    stopPolling();
+    poll();
+    pollInterval = setInterval(poll, 1000);
+  }
+
+  function stopPolling() {
+    if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+  }
+
+  async function poll() {
+    if (!roomCode || !myPlayer) return;
+    try {
+      const res = await fetch(`${WORKER}/poll?room=${roomCode}&player=${myPlayer}`);
+      if (!res.ok) return;
+      const data = await res.json();
+
+      // Player 1 waiting in lobby — opponent just joined
+      if (data.opponentJoined && gameEl.style.display === 'none') {
+        board = data.board;
+        currentTurn = data.turn;
+        showGame();
+        return;
+      }
+
+      if (gameEl.style.display === 'none') return;
+
+      board = data.board;
+      drawBoard();
+
+      if (data.status === 'done' && !gameOver) {
+        handleGameOver(data.winner);
+        return;
+      }
+
+      if (!gameOver) {
+        // Only update turn from poll when it's not our turn
+        // (our own moves update turn immediately via sendMove)
+        if (currentTurn !== myPlayer) {
+          currentTurn = data.turn;
+          updateChips();
+          setStatusText();
+        }
+      }
+
+      if (data.opponentGone && !gameOver) {
+        stopPolling();
+        statusEl.textContent = '👋 Opponent disconnected.';
+        gameOver = true;
+        canvas.className = 'not-turn';
+      }
+
+    } catch { /* network blip */ }
+  }
+
+  // ── Game flow ─────────────────────────────────────────────────────────────────
+  function showGame() {
+    lobbyEl.style.display = 'none';
+    gameEl.style.display = 'flex';
+    gameOver = false;
+    drawBoard();
+    updateChips();
+    setStatusText();
+    startPolling();
+  }
+
+  function setStatusText() {
+    statusEl.textContent = currentTurn === myPlayer ? '🟢 Your turn!' : "⏳ Opponent's turn...";
+  }
+
+  function handleGameOver(winner) {
+    gameOver = true;
+    stopPolling();
+    canvas.className = 'not-turn';
+    drawBoard();
+    if (winner === 'draw') statusEl.textContent = "🤝 It's a draw!";
+    else if (winner === myPlayer) statusEl.textContent = '🎉 You win!';
+    else statusEl.textContent = '😞 You lost!';
   }
 
   // ── Theme ─────────────────────────────────────────────────────────────────────
@@ -413,7 +447,6 @@
     applyTheme(t);
   });
 
-  // init
   board = emptyBoard();
   drawBoard();
 </script>
