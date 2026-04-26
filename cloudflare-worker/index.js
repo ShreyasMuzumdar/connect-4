@@ -3,7 +3,7 @@ const COLS = 7;
 const PLAYER = 1;
 const AI = 2;
 const EMPTY = 0;
-const SEARCH_DEPTH = 8;
+const SEARCH_DEPTH = 6;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
