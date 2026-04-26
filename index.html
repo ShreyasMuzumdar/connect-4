@@ -402,9 +402,6 @@
         
         <div class="controls">
             <button class="reset-btn" onclick="resetGame()">🔄 New Game</button>
-            <button class="difficulty-btn" id="easyBtn" onclick="setDifficulty('easy')">Easy</button>
-            <button class="difficulty-btn active" id="mediumBtn" onclick="setDifficulty('medium')">Medium</button>
-            <button class="difficulty-btn" id="hardBtn" onclick="setDifficulty('hard')">Hard</button>
         </div>
         
         <div class="info">
@@ -537,7 +534,7 @@
         let board = [];
         let currentPlayer = PLAYER;
         let gameOver = false;
-        let difficulty = 'medium'; // easy: depth 2, medium: depth 4, hard: depth 6
+        const difficulty = 'maximum'; // Full minimax algorithm with maximum depth
 
         // Initialize board
         function initBoard() {
@@ -866,7 +863,7 @@
             if (col === null) {
                 // Local minimax fallback (small artificial delay for UX)
                 await new Promise(resolve => setTimeout(resolve, 300));
-                const depthMap = { easy: 4, medium: 6, hard: 8 };
+                const depthMap = { maximum: 10 };
                 const depth = depthMap[difficulty];
                 [col] = minimax(depth, -Infinity, Infinity, true);
             }
@@ -951,12 +948,7 @@
             }
         }
 
-        // Set difficulty
-        function setDifficulty(level) {
-            difficulty = level;
-            document.querySelectorAll('.difficulty-btn').forEach(btn => btn.classList.remove('active'));
-            document.getElementById(level + 'Btn').classList.add('active');
-        }
+
 
         // Initialize
         initBoard();
