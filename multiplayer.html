@@ -195,8 +195,8 @@
   let currentTurn = 1;
   let gameOver = false;
   let pollInterval = null;
-  let sending = false;
   let opponentJoined = false;
+  let moveInFlight = false; // true while waiting for /move response
 
   const statusEl = document.getElementById('status');
   const lobbyEl  = document.getElementById('lobby');
@@ -234,55 +234,44 @@
     }
   }
 
-  function updateUI() {
+  function refreshUI() {
     chip1.classList.toggle('active', currentTurn === 1);
     chip2.classList.toggle('active', currentTurn === 2);
-    if (!gameOver) {
-      const isMyTurn = currentTurn === myPlayer && opponentJoined && !sending;
-      canvas.className = isMyTurn ? 'my-turn' : 'not-turn';
-      if (!opponentJoined) {
-        // keep the share code message, don't overwrite it
-      } else {
-        statusEl.textContent = isMyTurn ? '🟢 Your turn!' : "⏳ Opponent's turn...";
-      }
+    if (gameOver) return;
+    const myTurn = currentTurn === myPlayer && opponentJoined && !moveInFlight;
+    canvas.className = myTurn ? 'my-turn' : 'not-turn';
+    if (opponentJoined) {
+      statusEl.textContent = myTurn ? '🟢 Your turn!' : "⏳ Opponent's turn...";
     }
   }
 
   // ── Canvas click ─────────────────────────────────────────────────────────────
   canvas.addEventListener('click', async (e) => {
-    if (gameOver || currentTurn !== myPlayer || sending || !opponentJoined) return;
+    if (gameOver || currentTurn !== myPlayer || !opponentJoined || moveInFlight) return;
     const rect = canvas.getBoundingClientRect();
     const col = Math.floor((e.clientX - rect.left) / CELL);
     if (col < 0 || col >= COLS || board[0]?.[col] !== 0) return;
 
-    sending = true;
+    moveInFlight = true;
     canvas.className = 'not-turn';
 
     try {
-      const res = await fetch(`${WORKER}/move`, {
+      await fetch(`${WORKER}/move`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: roomCode, player: myPlayer, col }),
       });
-      const data = await res.json();
-      if (res.ok) {
-        board = data.board;
-        drawBoard();
-        if (data.status === 'done') {
-          handleGameOver(data.winner);
-          return; // don't clear sending, game is over
-        }
-        currentTurn = data.turn;
-      }
+      // Don't process the response — let the next poll pick up the new state.
+      // This avoids any race between sendMove and poll.
     } catch {
       statusEl.textContent = '❌ Move failed.';
     }
 
-    sending = false;
-    updateUI();
+    moveInFlight = false;
+    // Poll will update board and turn within 1 second
   });
 
-  // ── API ───────────────────────────────────────────────────────────────────────
+  // ── Lobby actions ─────────────────────────────────────────────────────────────
   async function createRoom() {
     const btn = document.getElementById('createBtn');
     btn.disabled = true;
@@ -336,13 +325,6 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: roomCode }),
       });
-      gameOver = false;
-      sending = false;
-      board = emptyBoard();
-      currentTurn = 1;
-      drawBoard();
-      updateUI();
-      startPolling();
     } catch {
       statusEl.textContent = '❌ Could not request rematch.';
     }
@@ -358,18 +340,17 @@
       }).catch(() => {});
     }
     roomCode = null; myPlayer = null; gameOver = false;
-    sending = false; opponentJoined = false;
+    moveInFlight = false; opponentJoined = false;
     board = emptyBoard();
     lobbyEl.style.display = 'flex';
     gameEl.style.display = 'none';
-    document.getElementById('roomCodeBox').style.display = 'none';
     document.getElementById('codeInput').value = '';
     document.getElementById('createBtn').disabled = false;
     statusEl.textContent = 'Ready to play!';
     drawBoard();
   }
 
-  // ── Polling ──────────────────────────────────────────────────────────────────
+  // ── Polling — single source of truth ─────────────────────────────────────────
   function startPolling() {
     stopPolling();
     pollInterval = setInterval(poll, 1000);
@@ -380,40 +361,43 @@
   }
 
   async function poll() {
-    if (!roomCode || !myPlayer || gameOver) return;
+    if (!roomCode || !myPlayer) return;
     try {
       const res = await fetch(`${WORKER}/poll?room=${roomCode}&player=${myPlayer}`);
       if (!res.ok) return;
       const data = await res.json();
 
-      // Detect opponent joining (Player 1 only)
-      if (!opponentJoined && data.opponentJoined) {
+      // Waiting for opponent
+      if (!data.opponentJoined) return;
+
+      // Opponent just joined
+      if (!opponentJoined) {
         opponentJoined = true;
-        currentTurn = data.turn;
-        board = data.board;
-        drawBoard();
-        updateUI();
+      }
+
+      // Always trust the server board
+      board = data.board;
+      drawBoard();
+
+      // Game over
+      if (data.status === 'done') {
+        stopPolling();
+        gameOver = true;
+        moveInFlight = false;
+        canvas.className = 'not-turn';
+        if (data.winner === 'draw') statusEl.textContent = "🤝 It's a draw!";
+        else if (data.winner === myPlayer) statusEl.textContent = '🎉 You win!';
+        else statusEl.textContent = '😞 You lost!';
         return;
       }
 
-      if (!opponentJoined) return; // still waiting, don't touch anything
+      // Update turn from server
+      currentTurn = data.turn;
 
-      // Game over (opponent won or draw — our own wins are handled in the click)
-      if (data.status === 'done' && !sending) {
-        board = data.board;
-        drawBoard();
-        handleGameOver(data.winner);
-        return;
-      }
+      // Clear moveInFlight once server acknowledges the turn changed
+      if (currentTurn !== myPlayer) moveInFlight = false;
 
-      // Only update from poll when it's the opponent's turn
-      // Never overwrite state mid-send
-      if (!sending && currentTurn !== myPlayer) {
-        board = data.board;
-        currentTurn = data.turn;
-        drawBoard();
-        updateUI();
-      }
+      refreshUI();
 
       if (data.opponentGone) {
         stopPolling();
@@ -430,20 +414,9 @@
     lobbyEl.style.display = 'none';
     gameEl.style.display = 'flex';
     gameOver = false;
-    sending = false;
+    moveInFlight = false;
     drawBoard();
-    updateUI();
-  }
-
-  function handleGameOver(winner) {
-    gameOver = true;
-    sending = false;
-    stopPolling();
-    canvas.className = 'not-turn';
-    drawBoard();
-    if (winner === 'draw') statusEl.textContent = "🤝 It's a draw!";
-    else if (winner === myPlayer) statusEl.textContent = '🎉 You win!';
-    else statusEl.textContent = '😞 You lost!';
+    refreshUI();
   }
 
   // ── Theme ─────────────────────────────────────────────────────────────────────
