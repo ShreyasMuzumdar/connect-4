@@ -240,14 +240,18 @@
     }
   }
 
+  let sending = false;
+
   // ── Canvas click ─────────────────────────────────────────────────────────────
   canvas.addEventListener('click', async (e) => {
-    if (gameOver || currentTurn !== myPlayer) return;
+    if (gameOver || currentTurn !== myPlayer || sending) return;
     const rect = canvas.getBoundingClientRect();
     const col = Math.floor((e.clientX - rect.left) / CELL);
     if (col < 0 || col >= COLS || board[0]?.[col] !== 0) return;
+    sending = true;
     canvas.className = 'not-turn';
     await sendMove(col);
+    sending = false;
   });
 
   // ── API ───────────────────────────────────────────────────────────────────────
@@ -392,7 +396,7 @@
         return;
       }
 
-      if (!gameOver) {
+      if (!gameOver && !sending) {
         // Only update turn from poll when it's not our turn
         // (our own moves update turn immediately via sendMove)
         if (currentTurn !== myPlayer) {
