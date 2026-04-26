@@ -338,6 +338,27 @@
             box-shadow: 0 6px 20px var(--shadow-medium);
         }
 
+        .ai-mode-badge {
+            display: inline-block;
+            font-size: 0.7rem;
+            font-weight: 600;
+            padding: 3px 8px;
+            border-radius: 10px;
+            margin-left: 8px;
+            vertical-align: middle;
+            letter-spacing: 0.03em;
+        }
+
+        .ai-mode-badge.cloud {
+            background: #22c55e;
+            color: #ffffff;
+        }
+
+        .ai-mode-badge.local {
+            background: #f59e0b;
+            color: #ffffff;
+        }
+
         @media (max-width: 600px) {
             h1 {
                 font-size: 2rem;
@@ -353,6 +374,9 @@
             }
         }
     </style>
+    <!-- Firebase SDK (compat) -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 </head>
 <body>
     
@@ -385,6 +409,8 @@
         
         <div class="info">
             <strong>How to play:</strong> Click on a column to drop your red piece. Get 4 in a row to win!
+            <br>
+            <span>AI Engine: <span class="ai-mode-badge local" id="aiModeBadge">⚡ Local</span></span>
         </div>
     </div>
 
@@ -400,6 +426,43 @@
     </div>
 
     <script>
+        // ─── Firebase Configuration ───────────────────────────────────────────────
+        // Replace these placeholder values with your actual Firebase project config.
+        // You can find these in the Firebase console under Project Settings > General.
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT.firebaseapp.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT.appspot.com",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+
+        // Initialise Firebase and the callable Cloud Function
+        let getAIMoveCloud = null;
+        let useCloudAI = false;
+
+        try {
+            if (firebaseConfig.apiKey && firebaseConfig.apiKey !== 'YOUR_API_KEY') {
+                firebase.initializeApp(firebaseConfig);
+                getAIMoveCloud = firebase.functions().httpsCallable('getAIMove');
+                useCloudAI = true;
+            }
+        } catch (e) {
+            console.warn('Firebase initialisation failed, using local AI:', e);
+        }
+
+        function updateAIModeBadge() {
+            const badge = document.getElementById('aiModeBadge');
+            if (useCloudAI) {
+                badge.textContent = '☁️ Cloud';
+                badge.className = 'ai-mode-badge cloud';
+            } else {
+                badge.textContent = '⚡ Local';
+                badge.className = 'ai-mode-badge local';
+            }
+        }
+        updateAIModeBadge();
         // Theme Detection and Sync
         function getThemePreference() {
             // Check localStorage for theme preference (same as main site)
@@ -780,32 +843,48 @@
             }
         }
 
-        // AI move
-        function aiMove() {
+        // AI move — tries Cloud Function first, falls back to local minimax
+        async function aiMove() {
             statusDiv.textContent = '🤖 AI is thinking...';
-            
-            setTimeout(() => {
+
+            let col = null;
+
+            if (useCloudAI && getAIMoveCloud) {
+                try {
+                    const boardCopy = board.map(r => [...r]);
+                    const result = await getAIMoveCloud({ board: boardCopy, difficulty });
+                    col = result.data.column;
+                } catch (error) {
+                    console.warn('Cloud AI unavailable, falling back to local AI:', error);
+                    useCloudAI = false;
+                    updateAIModeBadge();
+                }
+            }
+
+            if (col === null) {
+                // Local minimax fallback (small artificial delay for UX)
+                await new Promise(resolve => setTimeout(resolve, 300));
                 const depthMap = { easy: 4, medium: 6, hard: 8 };
                 const depth = depthMap[difficulty];
-                const [col, score] = minimax(depth, -Infinity, Infinity, true);
-                
-                if (col !== null && isValidLocation(col)) {
-                    const row = getNextOpenRow(col);
-                    dropPiece(row, col, AI);
-                    drawBoard();
+                [col] = minimax(depth, -Infinity, Infinity, true);
+            }
 
-                    if (checkWin(AI)) {
-                        statusDiv.textContent = '🤖 AI Wins! Better luck next time!';
-                        gameOver = true;
-                    } else if (isBoardFull()) {
-                        statusDiv.textContent = "🤝 It's a Draw!";
-                        gameOver = true;
-                    } else {
-                        currentPlayer = PLAYER;
-                        statusDiv.textContent = '🔴 Your turn!';
-                    }
+            if (col !== null && isValidLocation(col)) {
+                const row = getNextOpenRow(col);
+                dropPiece(row, col, AI);
+                drawBoard();
+
+                if (checkWin(AI)) {
+                    statusDiv.textContent = '🤖 AI Wins! Better luck next time!';
+                    gameOver = true;
+                } else if (isBoardFull()) {
+                    statusDiv.textContent = "🤝 It's a Draw!";
+                    gameOver = true;
+                } else {
+                    currentPlayer = PLAYER;
+                    statusDiv.textContent = '🔴 Your turn!';
                 }
-            }, 300);
+            }
         }
 
         // Handle click
