@@ -496,6 +496,26 @@
             }
         }
 
+        async function checkWorkerConnection() {
+            if (!useWorkerAI) {
+                workerConnected = false;
+                updateCloudflareStatusButton();
+                return;
+            }
+
+            try {
+                const response = await fetch(workerEndpoint, {
+                    method: 'GET',
+                    cache: 'no-store'
+                });
+                workerConnected = response.ok;
+            } catch (error) {
+                workerConnected = false;
+            }
+
+            updateCloudflareStatusButton();
+        }
+
         async function getAIMoveFromWorker(boardState) {
             const response = await fetch(workerEndpoint, {
                 method: 'POST',
@@ -531,6 +551,7 @@
         }
         updateCloudflareStatusButton();
         updateAIModeBadge();
+        checkWorkerConnection();
         // Theme Detection and Sync
         function getThemePreference() {
             // Check localStorage for theme preference (same as main site)
@@ -931,10 +952,15 @@
                 }
             }
 
+            if (col !== null && !isValidLocation(col)) {
+                // Defensive fallback if Worker returns a stale/invalid column.
+                col = null;
+            }
+
             if (col === null) {
                 // Local minimax fallback (small artificial delay for UX)
                 await new Promise(resolve => setTimeout(resolve, 300));
-                const depth = 8;
+                const depth = 6;
                 [col] = minimax(depth, -Infinity, Infinity, true);
             }
 
