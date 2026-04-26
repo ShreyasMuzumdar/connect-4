@@ -377,6 +377,14 @@
     <!-- Firebase SDK (compat) -->
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
+    <!--
+        Firebase Hosting auto-injects your project config at this reserved URL.
+        No API keys are needed in source code — the config is only served when
+        the page is loaded from your Firebase Hosting domain.
+        When running locally this script will fail to load (onerror sets a flag)
+        and the game falls back to the local minimax AI automatically.
+    -->
+    <script src="/__/firebase/init.js" onerror="window.__firebaseInitFailed=true"></script>
 </head>
 <body>
     
@@ -426,25 +434,18 @@
     </div>
 
     <script>
-        // ─── Firebase Configuration ───────────────────────────────────────────────
-        // Replace these placeholder values with your actual Firebase project config.
-        // You can find these in the Firebase console under Project Settings > General.
-        const firebaseConfig = {
-            apiKey: "YOUR_API_KEY",
-            authDomain: "YOUR_PROJECT.firebaseapp.com",
-            projectId: "YOUR_PROJECT_ID",
-            storageBucket: "YOUR_PROJECT.appspot.com",
-            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-            appId: "YOUR_APP_ID"
-        };
-
-        // Initialise Firebase and the callable Cloud Function
+        // ─── Firebase Cloud AI setup ──────────────────────────────────────────────
+        // Firebase Hosting automatically initialises the app via /__/firebase/init.js
+        // (loaded above). No API key is needed here — credentials are never in source.
+        // When running locally the init script fails to load and we fall back to the
+        // built-in minimax AI (useCloudAI stays false).
         let getAIMoveCloud = null;
         let useCloudAI = false;
 
         try {
-            if (firebaseConfig.apiKey && firebaseConfig.apiKey !== 'YOUR_API_KEY') {
-                firebase.initializeApp(firebaseConfig);
+            if (!window.__firebaseInitFailed &&
+                typeof firebase !== 'undefined' &&
+                firebase.apps.length > 0) {
                 getAIMoveCloud = firebase.functions().httpsCallable('getAIMove');
                 useCloudAI = true;
             }
