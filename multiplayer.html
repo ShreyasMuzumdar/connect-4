@@ -265,7 +265,7 @@
       currentTurn = 1;
       // Show game board immediately — display the code inside the game view
       showGame();
-      statusEl.textContent = `⏳ Share code <strong style="letter-spacing:0.1em">${roomCode}</strong> — waiting for opponent...`;
+      statusEl.innerHTML = `⏳ Share code <strong style="letter-spacing:0.1em">${roomCode}</strong> — waiting for opponent...`;
       startPolling();
     } catch {
       statusEl.textContent = '❌ Could not reach server.';
