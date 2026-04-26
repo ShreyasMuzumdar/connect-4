@@ -54,7 +54,31 @@
             padding: 20px;
             transition: background 0.3s ease;
             position: relative;
-            overflow: hidden;
+            overflow-x: hidden;
+            overflow-y: auto;
+        }
+
+        html {
+            overflow-y: scroll;
+            scrollbar-gutter: stable;
+        }
+
+        ::-webkit-scrollbar {
+            width: 12px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, var(--accent-primary), var(--accent-secondary));
+            border-radius: 999px;
+            border: 3px solid var(--bg-secondary);
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            filter: brightness(1.1);
         }
 
         #backgroundCanvas {
@@ -212,6 +236,34 @@
             transform: translateY(-2px);
             box-shadow: 0 6px 20px var(--shadow-medium);
             filter: brightness(1.1);
+        }
+
+        .cloudflare-status-btn {
+            position: fixed;
+            right: 20px;
+            top: 90px;
+            z-index: 1000;
+            background: var(--bg-card);
+            color: var(--text-primary);
+            border: 1px solid var(--border-light);
+            padding: 10px 14px;
+            border-radius: 999px;
+            box-shadow: 0 4px 15px var(--shadow-medium);
+            font-weight: 600;
+            cursor: default;
+            transition: all 0.3s ease;
+        }
+
+        .cloudflare-status-btn.connected {
+            background: linear-gradient(135deg, #22c55e, #16a34a);
+            color: white;
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .cloudflare-status-btn.disconnected {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: white;
+            border-color: rgba(255, 255, 255, 0.15);
         }
 
         .theme-toggle-track {
@@ -386,6 +438,10 @@
     </button>
     
     <a href="../" class="back-to-site-btn" title="Back to main site">← Back to Site</a>
+
+    <button class="cloudflare-status-btn disconnected" id="cloudflareStatusBtn" type="button" aria-label="Cloudflare connection status">
+        Cloudflare: Checking...
+    </button>
     
     <div class="container">
         <h1>🔴 Connect 4 AI</h1>
@@ -422,7 +478,23 @@
     <script>
         // Set this to your deployed Cloudflare Worker URL.
         const workerEndpoint = 'https://connect-4.shreyas2966.workers.dev/';
-        let useWorkerAI = workerEndpoint !== 'https://connect-4.shreyas2966.workers.dev/';
+        let useWorkerAI = workerEndpoint !== 'YOUR_CLOUDFLARE_WORKER_URL_HERE';
+        let workerConnected = useWorkerAI;
+
+        function updateCloudflareStatusButton() {
+            const statusButton = document.getElementById('cloudflareStatusBtn');
+            if (!statusButton) {
+                return;
+            }
+
+            if (workerConnected) {
+                statusButton.textContent = 'Cloudflare: Connected';
+                statusButton.className = 'cloudflare-status-btn connected';
+            } else {
+                statusButton.textContent = 'Cloudflare: Disconnected';
+                statusButton.className = 'cloudflare-status-btn disconnected';
+            }
+        }
 
         async function getAIMoveFromWorker(boardState) {
             const response = await fetch(workerEndpoint, {
@@ -457,6 +529,7 @@
                 badge.className = 'ai-mode-badge local';
             }
         }
+        updateCloudflareStatusButton();
         updateAIModeBadge();
         // Theme Detection and Sync
         function getThemePreference() {
@@ -847,9 +920,13 @@
                 try {
                     const boardCopy = board.map(r => [...r]);
                     col = await getAIMoveFromWorker(boardCopy);
+                    workerConnected = true;
+                    updateCloudflareStatusButton();
                 } catch (error) {
                     console.warn('Worker AI unavailable, falling back to local AI:', error);
                     useWorkerAI = false;
+                    workerConnected = false;
+                    updateCloudflareStatusButton();
                     updateAIModeBadge();
                 }
             }
