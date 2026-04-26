@@ -7,3 +7,20 @@ functions/node_modules/
 firebase-debug.log
 firestore-debug.log
 ui-debug.log
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Service account keys (NEVER commit these)
+*-service-account*.json
+service-account-key.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
