@@ -262,9 +262,10 @@
       roomCode = data.code;
       myPlayer = 1;
       board = emptyBoard();
-      document.getElementById('roomCodeDisplay').textContent = roomCode;
-      document.getElementById('roomCodeBox').style.display = 'block';
-      statusEl.textContent = '⏳ Waiting for opponent to join...';
+      currentTurn = 1;
+      // Show game board immediately — display the code inside the game view
+      showGame();
+      statusEl.textContent = `⏳ Share code <strong style="letter-spacing:0.1em">${roomCode}</strong> — waiting for opponent...`;
       startPolling();
     } catch {
       statusEl.textContent = '❌ Could not reach server.';
@@ -370,15 +371,18 @@
       if (!res.ok) return;
       const data = await res.json();
 
-      // Player 1 waiting in lobby — opponent just joined
-      if (data.opponentJoined && gameEl.style.display === 'none') {
-        board = data.board;
+      // Player 1 in game view waiting — opponent just joined
+      if (data.opponentJoined && myPlayer === 1 && !gameOver && statusEl.textContent.includes('waiting')) {
         currentTurn = data.turn;
-        showGame();
+        updateChips();
+        setStatusText();
         return;
       }
 
-      if (gameEl.style.display === 'none') return;
+      // Player 1 still waiting for opponent
+      if (!data.opponentJoined && myPlayer === 1 && gameEl.style.display !== 'none') {
+        return;
+      }
 
       board = data.board;
       drawBoard();
