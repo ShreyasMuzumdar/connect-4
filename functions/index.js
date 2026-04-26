@@ -229,12 +229,12 @@ exports.getAIMove = functions.https.onCall((data) => {
         }
     }
 
-    const allowedDifficulties = ['easy', 'medium', 'hard'];
+    const allowedDifficulties = ['easy', 'medium', 'hard', 'maximum'];
     if (!allowedDifficulties.includes(difficulty)) {
-        throw new functions.https.HttpsError('invalid-argument', 'Invalid difficulty. Must be easy, medium, or hard.');
+        throw new functions.https.HttpsError('invalid-argument', 'Invalid difficulty. Must be easy, medium, hard, or maximum.');
     }
 
-    const depthMap = { easy: 4, medium: 6, hard: 8 };
+    const depthMap = { easy: 4, medium: 6, hard: 8, maximum: 10 };
     const depth = depthMap[difficulty];
 
     const boardCopy = board.map(r => [...r]);
