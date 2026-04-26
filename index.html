@@ -455,6 +455,7 @@
         
         <div class="controls">
             <button class="reset-btn" onclick="resetGame()">🔄 New Game</button>
+            <a href="multiplayer.html" class="reset-btn" style="text-decoration:none; display:inline-flex; align-items:center;">🎮 Multiplayer</a>
         </div>
         
         <div class="info">
@@ -960,7 +961,7 @@
             if (col === null) {
                 // Local minimax fallback (small artificial delay for UX)
                 await new Promise(resolve => setTimeout(resolve, 300));
-                const depth = 6;
+                const depth = 4;
                 [col] = minimax(depth, -Infinity, Infinity, true);
             }
 
