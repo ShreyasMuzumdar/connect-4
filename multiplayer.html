@@ -267,8 +267,9 @@
       statusEl.textContent = '❌ Move failed.';
     }
 
-    moveInFlight = false;
-    // Poll will update board and turn within 1 second
+    // Don't clear moveInFlight here — let the poll clear it once it
+    // confirms the turn changed or the game ended. This prevents
+    // refreshUI() from re-enabling the canvas before the result is known.
   });
 
   // ── Lobby actions ─────────────────────────────────────────────────────────────
@@ -394,8 +395,8 @@
       // Update turn from server
       currentTurn = data.turn;
 
-      // Clear moveInFlight once server acknowledges the turn changed
-      if (currentTurn !== myPlayer) moveInFlight = false;
+      // Now safe to clear moveInFlight — we know the server processed our move
+      moveInFlight = false;
 
       refreshUI();
 
