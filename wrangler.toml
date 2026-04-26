@@ -1,0 +1,7 @@
+name = "connect-4-ai"
+main = "cloudflare-worker/index.js"
+compatibility_date = "2026-04-25"
+workers_dev = true
+
+# Replace this before deploying:
+account_id = "f2056d84cc95eda0bb73f79261962b87"

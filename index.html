@@ -349,7 +349,7 @@
             letter-spacing: 0.03em;
         }
 
-        .ai-mode-badge.cloud {
+        .ai-mode-badge.worker {
             background: #22c55e;
             color: #ffffff;
         }
@@ -374,9 +374,6 @@
             }
         }
     </style>
-    <!-- Firebase SDK (compat) -->
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 </head>
 <body>
     
@@ -423,39 +420,38 @@
     </div>
 
     <script>
-        // Your web app's Firebase configuration
-        // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-        const firebaseConfig = {
-            apiKey: "AIzaSyBmU9O3XCiJo9bX7sl46SfKfR4VHIOiSYo",
-            authDomain: "connect4-725d4.firebaseapp.com",
-            projectId: "connect4-725d4",
-            storageBucket: "connect4-725d4.firebasestorage.app",
-            messagingSenderId: "657721001477",
-            appId: "1:657721001477:web:feb9939111afda347b3e6c",
-            measurementId: "G-Y54EVRGGR2"
-        };
+        // Set this to your deployed Cloudflare Worker URL.
+        const workerEndpoint = 'https://connect-4.shreyas2966.workers.dev/';
+        let useWorkerAI = workerEndpoint !== 'https://connect-4.shreyas2966.workers.dev/';
 
-        // Initialize Firebase
-        firebase.initializeApp(firebaseConfig);
+        async function getAIMoveFromWorker(boardState) {
+            const response = await fetch(workerEndpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    board: boardState
+                })
+            });
 
-        // Initialise Firebase and the callable Cloud Function
-        let getAIMoveCloud = null;
-        let useCloudAI = false;
-
-        try {
-            if (firebaseConfig.apiKey && firebaseConfig.apiKey !== 'YOUR_API_KEY') {
-                getAIMoveCloud = firebase.functions().httpsCallable('getAIMove');
-                useCloudAI = true;
+            if (!response.ok) {
+                throw new Error(`Worker request failed with status ${response.status}`);
             }
-        } catch (e) {
-            console.warn('Firebase initialisation failed, using local AI:', e);
+
+            const data = await response.json();
+            if (typeof data.column !== 'number') {
+                throw new Error('Worker returned an invalid move.');
+            }
+
+            return data.column;
         }
 
         function updateAIModeBadge() {
             const badge = document.getElementById('aiModeBadge');
-            if (useCloudAI) {
-                badge.textContent = '☁️ Cloud';
-                badge.className = 'ai-mode-badge cloud';
+            if (useWorkerAI) {
+                badge.textContent = '☁️ Worker';
+                badge.className = 'ai-mode-badge worker';
             } else {
                 badge.textContent = '⚡ Local';
                 badge.className = 'ai-mode-badge local';
@@ -534,7 +530,6 @@
         let board = [];
         let currentPlayer = PLAYER;
         let gameOver = false;
-        const difficulty = 'maximum'; // Full minimax algorithm with maximum depth
 
         // Initialize board
         function initBoard() {
@@ -842,20 +837,19 @@
             }
         }
 
-        // AI move — tries Cloud Function first, falls back to local minimax
+        // AI move — tries Cloudflare Worker first, falls back to local minimax
         async function aiMove() {
             statusDiv.textContent = '🤖 AI is thinking...';
 
             let col = null;
 
-            if (useCloudAI && getAIMoveCloud) {
+            if (useWorkerAI) {
                 try {
                     const boardCopy = board.map(r => [...r]);
-                    const result = await getAIMoveCloud({ board: boardCopy, difficulty });
-                    col = result.data.column;
+                    col = await getAIMoveFromWorker(boardCopy);
                 } catch (error) {
-                    console.warn('Cloud AI unavailable, falling back to local AI:', error);
-                    useCloudAI = false;
+                    console.warn('Worker AI unavailable, falling back to local AI:', error);
+                    useWorkerAI = false;
                     updateAIModeBadge();
                 }
             }
@@ -863,8 +857,7 @@
             if (col === null) {
                 // Local minimax fallback (small artificial delay for UX)
                 await new Promise(resolve => setTimeout(resolve, 300));
-                const depthMap = { maximum: 10 };
-                const depth = depthMap[difficulty];
+                const depth = 8;
                 [col] = minimax(depth, -Infinity, Infinity, true);
             }
 
